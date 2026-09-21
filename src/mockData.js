@@ -3,12 +3,23 @@
  *
  * Replace this module with a real analytics/API client when export tracking exists.
  * Expected future shape: GET /analytics/exports?from&to&format&method&attribution
- * returning aggregated rows { date, format, method, attribution, count, clicks }.
+ * returning aggregated rows { date, format, method, attribution, attributionType, count, clicks, views }.
+ *
+ * Individual export events would come from telemetry such as:
+ * export_completed, share_link_created, embed_published, attribution_visible, open_in_excalidraw_clicked.
  */
 
 export const FORMATS = ["PNG", "SVG", "PDF", "PPTX"];
 export const METHODS = ["Download", "Share", "Embed"];
 export const ATTRIBUTION_STATUSES = ["All", "Attributed", "Unattributed"];
+export const ATTRIBUTION_TYPES = ["Made with Excalidraw", "Branded Share Page", "Open/Edit Link", "None"];
+
+export const NAV_ITEMS = [
+  { id: "overview", label: "Overview" },
+  { id: "exports", label: "Exports" },
+  { id: "attribution", label: "Attribution" },
+  { id: "share-embed", label: "Share & Embed" }
+];
 
 export const DATE_PRESETS = [
   { id: "all", label: "All dates (Sep 14–20)", from: "2026-09-14", to: "2026-09-20" },
@@ -70,11 +81,19 @@ const methodWeightsUnattributed = {
   PPTX: { Download: 0.84, Share: 0.14, Embed: 0.02 }
 };
 
+const attributedTypeWeights = {
+  Download: { "Made with Excalidraw": 1 },
+  Share: { "Branded Share Page": 0.68, "Open/Edit Link": 0.32 },
+  Embed: { "Branded Share Page": 0.35, "Open/Edit Link": 0.65 }
+};
+
 const clickRates = {
   Download: 0,
   Share: 0.19,
   Embed: 0.26
 };
+
+const SAMPLE_TIMES = ["08:14", "09:32", "10:05", "11:47", "13:21", "14:08", "15:55", "16:42", "18:19"];
 
 function splitByWeights(total, weights) {
   const keys = Object.keys(weights);
@@ -92,6 +111,12 @@ function splitByWeights(total, weights) {
   return Object.fromEntries(keys.map((key, index) => [key, floors[index]]));
 }
 
+function methodStatus(method) {
+  if (method === "Download") return "Downloaded";
+  if (method === "Share") return "Link created";
+  return "Embed published";
+}
+
 function buildMockExports() {
   const rows = [];
   let id = 1;
@@ -103,18 +128,23 @@ function buildMockExports() {
     METHODS.forEach((method) => {
       const attributedCount = attributedSplit[method];
       const unattributedCount = unattributedSplit[method];
+      const typeSplit = splitByWeights(attributedCount, attributedTypeWeights[method]);
 
-      if (attributedCount > 0) {
+      Object.entries(typeSplit).forEach(([attributionType, count]) => {
+        if (count <= 0) return;
+        const clicks = method === "Download" ? 0 : Math.round(count * clickRates[method]);
         rows.push({
           id: id++,
           date: row.date,
           format: row.format,
           method,
           attribution: true,
-          count: attributedCount,
-          clicks: method === "Download" ? 0 : Math.round(attributedCount * clickRates[method])
+          attributionType,
+          count,
+          clicks,
+          views: attributionType === "Branded Share Page" ? Math.round(count * 2.8) : 0
         });
-      }
+      });
 
       if (unattributedCount > 0) {
         rows.push({
@@ -123,8 +153,10 @@ function buildMockExports() {
           format: row.format,
           method,
           attribution: false,
+          attributionType: "None",
           count: unattributedCount,
-          clicks: 0
+          clicks: 0,
+          views: 0
         });
       }
     });
@@ -133,4 +165,25 @@ function buildMockExports() {
   return rows;
 }
 
+function buildMockEvents(aggregates) {
+  // Sample event-level telemetry, not the full 9,600 exports.
+  // In production these records would be the source for Brand Visibility Rate.
+  return aggregates.map((row, index) => {
+    const time = SAMPLE_TIMES[index % SAMPLE_TIMES.length];
+    return {
+      id: `evt-${row.id}`,
+      timestamp: `${row.date}T${time}:00`,
+      date: row.date,
+      format: row.format,
+      method: row.method,
+      attribution: row.attribution,
+      attributionStatus: row.attribution ? "Attributed" : "Unattributed",
+      attributionType: row.attributionType,
+      openEditClick: row.clicks > 0,
+      status: methodStatus(row.method)
+    };
+  });
+}
+
 export const mockExports = buildMockExports();
+export const mockEvents = buildMockEvents(mockExports);
