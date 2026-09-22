@@ -1,7 +1,7 @@
 import React from "react";
 import { NAV_ITEMS } from "../mockData";
 
-export default function Sidebar({ currentPage, onNavigate }) {
+export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -18,13 +18,7 @@ export default function Sidebar({ currentPage, onNavigate }) {
       </div>
       <nav className="sidebar-nav" aria-label="Dashboard sections">
         {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`nav-item${currentPage === item.id ? " active" : ""}`}
-            onClick={() => onNavigate(item.id)}
-            aria-current={currentPage === item.id ? "page" : undefined}
-          >
+          <button key={item.id} type="button" className="nav-item active" aria-current="page">
             {item.label}
           </button>
         ))}

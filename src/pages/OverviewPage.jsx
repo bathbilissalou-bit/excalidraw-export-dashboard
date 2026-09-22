@@ -5,7 +5,7 @@ import MiniLineChart from "../components/MiniLineChart";
 import { MOCK_DATA_NOTICE } from "../mockData";
 import { formatNumber, formatPercent, rankFormats } from "../analytics";
 
-export default function OverviewPage({ totals, byFormat, byMethod, trend, insights, opportunities }) {
+export default function OverviewPage({ totals, byFormat, trend, insights, opportunities }) {
   const { best, worst } = rankFormats(byFormat);
 
   return (
@@ -33,6 +33,11 @@ export default function OverviewPage({ totals, byFormat, byMethod, trend, insigh
           label="Unattributed Exports"
           value={formatNumber(totals.unattributed)}
           description="Exports with no visible attribution"
+        />
+        <MetricCard
+          label="Links Shared"
+          value={formatNumber(totals.linksShared)}
+          description="Sharing links created in the selected period"
         />
       </section>
 
@@ -106,8 +111,8 @@ export default function OverviewPage({ totals, byFormat, byMethod, trend, insigh
             <thead>
               <tr>
                 <th>Format</th>
-                <th>Total Exports</th>
-                <th>Attributed Exports</th>
+                <th>Total</th>
+                <th>Attributed</th>
                 <th>Brand Visibility Rate</th>
                 <th>Progress</th>
               </tr>
@@ -115,7 +120,7 @@ export default function OverviewPage({ totals, byFormat, byMethod, trend, insigh
             <tbody>
               {byFormat.map((row) => {
                 const isBest = best && row.format === best.format && row.total > 0;
-                const isWorst = worst && row.format === worst.format && row.total > 0;
+                const isWorst = worst && row.format === worst.format && row.total > 0 && worst.rate < best.rate;
                 return (
                   <tr key={row.format} className={isBest ? "row-best" : isWorst ? "row-worst" : ""}>
                     <td data-label="Format">
@@ -123,8 +128,8 @@ export default function OverviewPage({ totals, byFormat, byMethod, trend, insigh
                       {isBest ? <span className="rank-badge rank-high">Highest</span> : null}
                       {isWorst ? <span className="rank-badge rank-low">Lowest</span> : null}
                     </td>
-                    <td data-label="Total Exports">{formatNumber(row.total)}</td>
-                    <td data-label="Attributed Exports">{formatNumber(row.attributed)}</td>
+                    <td data-label="Total">{formatNumber(row.total)}</td>
+                    <td data-label="Attributed">{formatNumber(row.attributed)}</td>
                     <td data-label="Brand Visibility Rate">{row.total ? formatPercent(row.rate) : "—"}</td>
                     <td data-label="Progress">
                       <div className="progress-track" aria-hidden="true">
@@ -136,35 +141,6 @@ export default function OverviewPage({ totals, byFormat, byMethod, trend, insigh
               })}
             </tbody>
           </table>
-        </div>
-      </section>
-
-      <section className="card panel">
-        <div className="panel-header">
-          <div>
-            <h2>Performance by export method</h2>
-            <p>Download, share, and embed after a drawing leaves the app.</p>
-          </div>
-        </div>
-        <div className="method-grid">
-          {byMethod.map((row) => (
-            <article className="method-card" key={row.method}>
-              <h3>{row.method}</h3>
-              <p className="method-total">{formatNumber(row.total)}</p>
-              <p className="method-label">Total exports</p>
-              <div className="method-rate-row">
-                <span>Attributed exports</span>
-                <strong>{formatNumber(row.attributed)}</strong>
-              </div>
-              <div className="method-rate-row">
-                <span>Brand Visibility Rate</span>
-                <strong>{row.total ? formatPercent(row.rate) : "—"}</strong>
-              </div>
-              <div className="progress-track method-progress" aria-hidden="true">
-                <div className="progress-fill" style={{ width: `${Math.round(row.rate * 100)}%` }} />
-              </div>
-            </article>
-          ))}
         </div>
       </section>
 

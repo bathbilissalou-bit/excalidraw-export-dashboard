@@ -1,4 +1,4 @@
-import { ATTRIBUTION_TYPES, FORMATS, METHODS } from "./mockData";
+import { FORMATS, SHARING_LINK_FORMAT } from "./mockData";
 
 export function visibilityRate(attributed, total) {
   return total ? attributed / total : 0;
@@ -18,26 +18,22 @@ export function formatShortDate(isoDate) {
   return `${months[month - 1]} ${day}`;
 }
 
-export function formatTimestamp(isoDateTime) {
-  const [isoDate, time] = isoDateTime.split("T");
-  const [hourString, minute] = time.split(":");
-  const hour = Number(hourString);
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const hour12 = hour % 12 || 12;
-  return `${formatShortDate(isoDate)}, 2026 · ${hour12}:${minute} ${suffix}`;
-}
-
-export function filterExports(rows, { format, status, method, datePreset }) {
+export function filterExports(rows, { format, status, datePreset }) {
   return rows.filter((row) => {
     const matchesFormat = format === "All" || row.format === format;
     const matchesStatus =
       status === "All" ||
       (status === "Attributed" && row.attribution) ||
       (status === "Unattributed" && !row.attribution);
-    const matchesMethod = method === "All" || row.method === method;
     const matchesDate = row.date >= datePreset.from && row.date <= datePreset.to;
-    return matchesFormat && matchesStatus && matchesMethod && matchesDate;
+    return matchesFormat && matchesStatus && matchesDate;
   });
+}
+
+export function countSharingLinks(rows) {
+  return rows
+    .filter((row) => row.format === SHARING_LINK_FORMAT)
+    .reduce((sum, row) => sum + row.count, 0);
 }
 
 export function summarize(rows) {
@@ -53,6 +49,7 @@ export function summarize(rows) {
     unattributed,
     clicks,
     views,
+    linksShared: countSharingLinks(rows),
     rate: visibilityRate(attributed, total)
   };
 }
@@ -62,22 +59,6 @@ export function performanceByFormat(rows) {
     const group = rows.filter((row) => row.format === format);
     const stats = summarize(group);
     return { format, ...stats };
-  });
-}
-
-export function performanceByMethod(rows) {
-  return METHODS.map((method) => {
-    const group = rows.filter((row) => row.method === method);
-    const stats = summarize(group);
-    return { method, ...stats };
-  });
-}
-
-export function performanceByAttributionType(rows) {
-  return ATTRIBUTION_TYPES.map((type) => {
-    const group = rows.filter((row) => row.attributionType === type);
-    const stats = summarize(group);
-    return { type, ...stats };
   });
 }
 
@@ -104,25 +85,6 @@ export function brandVisibilityTrend(rows) {
     }));
 }
 
-export function shareEmbedMetrics(rows) {
-  const overall = summarize(rows);
-  const share = summarize(rows.filter((row) => row.method === "Share"));
-  const embed = summarize(rows.filter((row) => row.method === "Embed"));
-  const brandedShareViews = rows
-    .filter((row) => row.attributionType === "Branded Share Page")
-    .reduce((sum, row) => sum + (row.views || 0), 0);
-
-  return {
-    overall,
-    shareLinksCreated: share.total,
-    embedsCreated: embed.total,
-    brandedShareViews,
-    clicks: overall.clicks,
-    share,
-    embed
-  };
-}
-
 export function rankFormats(byFormat) {
   const active = byFormat.filter((row) => row.total > 0);
   if (!active.length) {
@@ -137,25 +99,7 @@ export function rankFormats(byFormat) {
   };
 }
 
-export function rankMethods(byMethod) {
-  const active = byMethod.filter((row) => row.total > 0);
-  if (!active.length) {
-    return { best: null, worst: null };
-  }
-  const ranked = [...active].sort((a, b) => b.rate - a.rate || b.total - a.total);
-  const best = ranked[0];
-  const worst = ranked[ranked.length - 1];
-  return {
-    best,
-    worst: worst.method === best.method ? null : worst
-  };
-}
-
-function methodLabel(method) {
-  return method === "Download" ? "Direct Download" : method;
-}
-
-export function buildVisibilityOpportunities({ totals, byFormat, byMethod }) {
+export function buildVisibilityOpportunities({ totals, byFormat }) {
   if (!totals.total) {
     return [
       {
@@ -169,9 +113,8 @@ export function buildVisibilityOpportunities({ totals, byFormat, byMethod }) {
 
   const opportunities = [];
   const { best: bestFormat, worst: worstFormat } = rankFormats(byFormat);
-  const { best: bestMethod, worst: worstMethod } = rankMethods(byMethod);
-  const share = byMethod.find((row) => row.method === "Share");
-  const download = byMethod.find((row) => row.method === "Download");
+  const sharing = byFormat.find((row) => row.format === SHARING_LINK_FORMAT);
+  const embed = byFormat.find((row) => row.format === "Embed");
 
   if (worstFormat && bestFormat && worstFormat.rate < bestFormat.rate) {
     opportunities.push({
@@ -182,40 +125,39 @@ export function buildVisibilityOpportunities({ totals, byFormat, byMethod }) {
     });
   }
 
-  if (worstMethod && bestMethod && worstMethod.rate < bestMethod.rate) {
-    const comparison =
-      worstMethod.method === "Download" && share?.total && share.rate > worstMethod.rate ? share : bestMethod;
-    const downloadVsShare =
-      worstMethod.method === "Download" && comparison.method === "Share"
-        ? `Direct Download has lower visible attribution than Share (${formatPercent(worstMethod.rate)} vs ${formatPercent(comparison.rate)}), suggesting an opportunity to test additional optional attribution in the download flow.`
-        : `${methodLabel(worstMethod.method)} currently has a Brand Visibility Rate of ${formatPercent(worstMethod.rate)}, below ${methodLabel(comparison.method)} at ${formatPercent(comparison.rate)}. This is an opportunity to test contextual attribution around that export path.`;
+  if (bestFormat && bestFormat.total && bestFormat.rate > 0) {
+    const discoveryCopy =
+      bestFormat.format === SHARING_LINK_FORMAT
+        ? `${SHARING_LINK_FORMAT} currently retains the highest Brand Visibility Rate at ${formatPercent(bestFormat.rate)}, suggesting branded share experiences are an effective organic discovery channel.`
+        : bestFormat.format === "Embed"
+          ? `Embed currently retains the highest Brand Visibility Rate at ${formatPercent(bestFormat.rate)}, suggesting contextual attribution around embedded drawings is an effective organic discovery channel.`
+          : `${bestFormat.format} currently has the highest Brand Visibility Rate at ${formatPercent(bestFormat.rate)}, making it a useful reference for optional attribution on other export paths.`;
 
     opportunities.push({
-      id: "lowest-method",
-      title: `Lowest-performing method: ${methodLabel(worstMethod.method)}`,
-      body: downloadVsShare,
-      metric: formatPercent(worstMethod.rate)
+      id: "strong-format",
+      title: `Strong-performing format: ${bestFormat.format}`,
+      body: discoveryCopy,
+      metric: formatPercent(bestFormat.rate)
     });
   }
 
-  if (bestMethod && bestMethod.total && (bestMethod.method === "Share" || bestMethod.method === "Embed")) {
-    const shareCopy =
-      bestMethod.method === "Share"
-        ? `Share links retain higher Excalidraw visibility at ${formatPercent(bestMethod.rate)}, suggesting branded share experiences are an effective organic discovery channel.`
-        : `Embeds currently retain the highest Brand Visibility Rate at ${formatPercent(bestMethod.rate)}, suggesting contextual attribution around embedded drawings is an effective organic discovery channel.`;
-
+  if (
+    sharing?.total &&
+    bestFormat?.format !== SHARING_LINK_FORMAT &&
+    sharing.rate > totals.rate
+  ) {
     opportunities.push({
-      id: "strong-method",
-      title: `Strong-performing method: ${bestMethod.method}`,
-      body: shareCopy,
-      metric: formatPercent(bestMethod.rate)
+      id: "sharing-link",
+      title: `${SHARING_LINK_FORMAT} visibility`,
+      body: `${SHARING_LINK_FORMAT} retains a Brand Visibility Rate of ${formatPercent(sharing.rate)}, above the overall rate of ${formatPercent(totals.rate)}, suggesting branded share experiences are an effective organic discovery channel.`,
+      metric: formatPercent(sharing.rate)
     });
-  } else if (share?.total && download?.total && share.rate > download.rate) {
+  } else if (embed?.total && bestFormat?.format !== "Embed" && embed.rate > totals.rate) {
     opportunities.push({
-      id: "strong-method",
-      title: "Strong-performing method: Share",
-      body: `Share links retain higher Excalidraw visibility than Direct Download (${formatPercent(share.rate)} vs ${formatPercent(download.rate)}), suggesting branded share experiences are an effective organic discovery channel.`,
-      metric: formatPercent(share.rate)
+      id: "embed-visibility",
+      title: "Embed visibility",
+      body: `Embed retains a Brand Visibility Rate of ${formatPercent(embed.rate)}, above the overall rate of ${formatPercent(totals.rate)}, suggesting contextual attribution around embedded drawings is an effective discovery path.`,
+      metric: formatPercent(embed.rate)
     });
   }
 
@@ -238,27 +180,7 @@ export function buildVisibilityOpportunities({ totals, byFormat, byMethod }) {
   return opportunities.slice(0, 4);
 }
 
-export function searchEvents(events, query) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return events;
-  return events.filter((event) => {
-    const haystack = [
-      event.timestamp,
-      formatTimestamp(event.timestamp),
-      event.format,
-      event.method,
-      event.attributionStatus,
-      event.attributionType,
-      event.openEditClick ? "yes" : "no",
-      event.status
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(needle);
-  });
-}
-
-export function buildInsights({ totals, byFormat, byMethod, trend }) {
+export function buildInsights({ totals, byFormat, trend }) {
   const activeFormats = byFormat.filter((row) => row.total > 0);
 
   if (!activeFormats.length || totals.total === 0) {
@@ -280,25 +202,26 @@ export function buildInsights({ totals, byFormat, byMethod, trend }) {
     });
   }
 
-  if (worst) {
+  if (worst && worst.rate < (best?.rate ?? 0)) {
     insights.push({
       title: `${worst.format} has the lowest Brand Visibility Rate at ${formatPercent(worst.rate)}.`,
       body: `${formatNumber(worst.unattributed)} ${worst.format} exports have no visible attribution.`
     });
   }
 
-  const share = byMethod.find((row) => row.method === "Share");
-  const download = byMethod.find((row) => row.method === "Download");
-  if (share?.total && download?.total) {
-    if (share.rate > download.rate) {
+  const sharing = byFormat.find((row) => row.format === SHARING_LINK_FORMAT);
+  const otherFormats = byFormat.filter((row) => row.format !== SHARING_LINK_FORMAT && row.total > 0);
+  if (sharing?.total && otherFormats.length) {
+    const other = summarizeTotals(otherFormats);
+    if (sharing.rate > other.rate) {
       insights.push({
-        title: "Share exports have higher attribution than direct downloads.",
-        body: `Share Brand Visibility Rate is ${formatPercent(share.rate)} vs ${formatPercent(download.rate)} for Download.`
+        title: `${SHARING_LINK_FORMAT} has higher attribution than other export formats.`,
+        body: `${SHARING_LINK_FORMAT} Brand Visibility Rate is ${formatPercent(sharing.rate)} vs ${formatPercent(other.rate)} for the remaining formats in this view.`
       });
-    } else if (download.rate > share.rate) {
+    } else if (other.rate > sharing.rate) {
       insights.push({
-        title: "Direct downloads currently retain more attribution than shares.",
-        body: `Download Brand Visibility Rate is ${formatPercent(download.rate)} vs ${formatPercent(share.rate)} for Share.`
+        title: `Other export formats currently retain more attribution than ${SHARING_LINK_FORMAT}.`,
+        body: `Remaining formats are at ${formatPercent(other.rate)} vs ${formatPercent(sharing.rate)} for ${SHARING_LINK_FORMAT}.`
       });
     }
   }
@@ -316,4 +239,10 @@ export function buildInsights({ totals, byFormat, byMethod, trend }) {
   }
 
   return insights.slice(0, 4);
+}
+
+function summarizeTotals(formatRows) {
+  const total = formatRows.reduce((sum, row) => sum + row.total, 0);
+  const attributed = formatRows.reduce((sum, row) => sum + row.attributed, 0);
+  return { total, attributed, rate: visibilityRate(attributed, total) };
 }

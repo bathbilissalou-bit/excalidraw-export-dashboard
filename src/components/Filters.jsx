@@ -1,7 +1,7 @@
 import React from "react";
-import { ATTRIBUTION_STATUSES, DATE_PRESETS, FORMATS, METHODS } from "../mockData";
+import { ATTRIBUTION_STATUSES, DATE_PRESETS, FORMATS } from "../mockData";
 
-export default function Filters({ format, status, method, dateRangeId, onFormat, onStatus, onMethod, onDateRange, onReset }) {
+export default function Filters({ format, status, dateRangeId, onFormat, onStatus, onDateRange, onReset }) {
   return (
     <section className="filters card" aria-label="Dashboard filters">
       <div>
@@ -27,15 +27,6 @@ export default function Filters({ format, status, method, dateRangeId, onFormat,
         <label htmlFor="status-filter">Attribution Status</label>
         <select id="status-filter" value={status} onChange={(event) => onStatus(event.target.value)}>
           {ATTRIBUTION_STATUSES.map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="method-filter">Export Method</label>
-        <select id="method-filter" value={method} onChange={(event) => onMethod(event.target.value)}>
-          <option>All</option>
-          {METHODS.map((value) => (
             <option key={value}>{value}</option>
           ))}
         </select>
